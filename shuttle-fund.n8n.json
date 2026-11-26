@@ -1,0 +1,73 @@
+{
+  "name": "Shuttle fund | Cash received vs. signed pledges",
+  "nodes": [
+    {
+      "id": "382da449-5937-51af-a294-ccf3f66ff359",
+      "name": "Run the example",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "967139ea-77e3-5bef-a70f-b570fd30eba4",
+      "name": "Fictional source records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: {\n  \"campaign\": \"Shuttle fund (fictional)\",\n  \"goalCents\": 600000,\n  \"proposedReceivedCents\": 600000,\n  \"records\": [\n    {\n      \"id\": \"D-101\",\n      \"source\": \"deposit log\",\n      \"status\": \"posted\",\n      \"cents\": 180000\n    },\n    {\n      \"id\": \"D-102\",\n      \"source\": \"deposit log\",\n      \"status\": \"posted\",\n      \"cents\": 240000\n    },\n    {\n      \"id\": \"P-201\",\n      \"source\": \"pledge register\",\n      \"status\": \"signed\",\n      \"cents\": 180000\n    }\n  ]\n} }];"
+      }
+    },
+    {
+      "id": "9d2b932b-8857-542d-be86-c9b2d7d63326",
+      "name": "Reconcile deposits and pledges",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst issues = [];\nconst seen = new Map();\nconst trace = [];\nconst duplicates = [];\nlet received = 0;\nlet pledged = 0;\nfor (const row of input.records ?? []) {\n  const id = row.id;\n  if (typeof id !== 'string' || !id.trim() || !Number.isSafeInteger(row.cents) || row.cents <= 0) {\n    issues.push('Invalid source ID or positive whole-cent amount');\n    continue;\n  }\n  const fingerprint = JSON.stringify([row.source, row.status, row.cents]);\n  if (seen.has(id)) {\n    if (seen.get(id) !== fingerprint) issues.push('Conflicting versions of ' + id);\n    else duplicates.push(id);\n    continue;\n  }\n  seen.set(id, fingerprint);\n  let bucket;\n  if (row.source === 'deposit log' && row.status === 'posted') {\n    bucket = 'received';\n    received += row.cents;\n  } else if (row.source === 'pledge register' && row.status === 'signed') {\n    bucket = 'pledged';\n    pledged += row.cents;\n  } else {\n    issues.push('Unrecognized source or status for ' + id);\n    continue;\n  }\n  trace.push({ id, source: row.source, status: row.status, cents: row.cents, bucket });\n}\nif (!trace.length) issues.push('No usable records');\nif (!Number.isSafeInteger(input.goalCents) || input.goalCents <= 0 ||\n    !Number.isSafeInteger(input.proposedReceivedCents) || input.proposedReceivedCents < 0 ||\n    !Number.isSafeInteger(received) || !Number.isSafeInteger(pledged)) {\n  issues.push('Invalid goal, proposed amount or total');\n}\nconst common = {campaign: input.campaign, trace, duplicates, issues};\nif (issues.length) return [{json: {...common, status:'REVIEW', draft:null}}];\nconst currency = n => (n / 100).toLocaleString('en-US', {style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:2});\nreturn [{json: {...common, status:'READY FOR REVIEW', receivedCents:received,\n pledgedCents:pledged, goalCents:input.goalCents, claimedExcessCents:input.proposedReceivedCents-received,\n percentReceived:Math.round(1000*received/input.goalCents)/10,\n draft:input.campaign+' received '+currency(received)+' toward its '+currency(input.goalCents)+' goal. Signed pledges total '+currency(pledged)+'.'}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Run the example": {
+      "main": [
+        [
+          {
+            "node": "Fictional source records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fictional source records": {
+      "main": [
+        [
+          {
+            "node": "Reconcile deposits and pledges",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "id": "ShuttleFundDemo01",
+  "versionId": "08a8faec-c41e-4b91-b186-a82ef931c760"
+}

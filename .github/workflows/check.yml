@@ -1,0 +1,21 @@
+name: Verify the n8n example
+on: [push, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: node verify.mjs
+      - name: Import and execute the workflow in n8n
+        run: |
+          docker run --rm --network none \
+            -e N8N_DIAGNOSTICS_ENABLED=false -e N8N_LOG_LEVEL=error \
+            -v "$PWD/shuttle-fund.n8n.json:/input/workflow.json:ro" \
+            --entrypoint /bin/sh docker.n8n.io/n8nio/n8n@sha256:17a3e5a8c5e2a7440cc757f5392d57b50eefdfd46eac4532a7dea9bf2735d9ae \
+            -c 'n8n import:workflow --input=/input/workflow.json >&2 && n8n execute --id=ShuttleFundDemo01 --rawOutput' > "$RUNNER_TEMP/n8n.json"
+          node verify.mjs "$RUNNER_TEMP/n8n.json"

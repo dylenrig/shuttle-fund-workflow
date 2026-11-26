@@ -33,9 +33,11 @@ for (const records of [[], [...r,{...r[0],cents:1000}], [{...r[0],cents:20.25}],
 }
 if (process.argv[2]) {
   const contents = readFileSync(process.argv[2], 'utf8');
-  const start = contents.indexOf('{');
-  assert.ok(start >= 0, 'Expected JSON from n8n');
-  const output = JSON.parse(contents.slice(start));
+  const lines = contents.split(/\r?\n/);
+  const start = lines.findIndex(line => line === '{');
+  const end = lines.lastIndexOf('}');
+  assert.ok(start >= 0 && end > start, 'Expected a complete execution document from n8n. Output: ' + contents.slice(-2500));
+  const output = JSON.parse(lines.slice(start, end + 1).join('\n'));
   const data = (output.data?.resultData ?? output.resultData)?.runData;
   checkStandard(data[reconcile.name][0].data.main[0][0].json);
   console.log('Verified receipt against the final node output of an n8n execution.');
